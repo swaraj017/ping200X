@@ -1,15 +1,22 @@
 # Environment variables and secrets
+
 .env
 .env.*
 !.env.example
 
 # Python
-__pycache__/
+
+**pycache**/
 *.py[cod]
 .venv/
-
-# Environment and build artifacts
 .pytest_cache/
 .ruff_cache/
+
+# Build artifacts
+
 dist/
 build/
+
+# Node.js
+
+node_modules/
