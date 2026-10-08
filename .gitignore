@@ -1,0 +1,15 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Environment and build artifacts
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
