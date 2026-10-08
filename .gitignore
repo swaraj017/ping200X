@@ -1,4 +1,22 @@
-node_modules/
+# Environment variables and secrets
+
 .env
 .env.*
 !.env.example
+
+# Python
+
+**pycache**/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Build artifacts
+
+dist/
+build/
+
+# Node.js
+
+node_modules/
