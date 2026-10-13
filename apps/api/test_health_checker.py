@@ -66,3 +66,32 @@ async def test_connection_failure():
     assert result["status_code"] is None
     assert result["response_time_ms"] >= 0
     assert result["error"] is not None
+
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_request_timeout():
+    respx.get("https://example.com/").mock(
+        side_effect=httpx.ReadTimeout("Request timed out")
+    )
+
+    result = await check_url("https://example.com/")
+
+    assert result["status"] == "DOWN"
+    assert result["status_code"] is None
+    assert result["error"] == "Request timed out"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_server_error_response():
+    respx.get("https://example.com/").mock(
+        return_value=httpx.Response(500)
+    )
+
+    result = await check_url("https://example.com/")
+
+    assert result["status"] == "UP"
+    assert result["status_code"] == 500
+    assert result["error"] is None
