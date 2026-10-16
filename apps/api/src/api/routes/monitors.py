@@ -4,6 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select,desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+
+from api.services.url_security import validate_url, UnsafeURLError
+
 from api.models import (
     MonitorCreate,
     MonitorResponse,
@@ -30,14 +33,24 @@ async def get_monitors(
 
 
 # POST: Create a new monitor.
+
+# POST: Create a new monitor.
 @router.post("/", response_model=MonitorResponse)
 async def create_monitor(
     monitor: MonitorCreate,
     db: AsyncSession = Depends(get_db),
 ):
+    try:
+        validated_url = validate_url(str(monitor.url))
+    except UnsafeURLError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        ) from exc
+
     new_monitor = MonitorDB(
         name=monitor.name,
-        url=str(monitor.url),
+        url=validated_url,
     )
 
     db.add(new_monitor)
@@ -69,6 +82,8 @@ async def delete_monitor(
 
 
 # PUT: Update an existing monitor.
+
+# PUT: Update an existing monitor.
 @router.put("/{monitor_id}", response_model=MonitorResponse)
 async def update_monitor(
     monitor_id: int,
@@ -86,8 +101,16 @@ async def update_monitor(
             detail="Monitor not found",
         )
 
+    try:
+        validated_url = validate_url(str(monitor_data.url))
+    except UnsafeURLError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        ) from exc
+
     monitor.name = monitor_data.name
-    monitor.url = str(monitor_data.url)
+    monitor.url = validated_url
 
     await db.commit()
     await db.refresh(monitor)

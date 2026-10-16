@@ -159,3 +159,180 @@ async def test_get_missing_monitor_history(client):
 
     # The API should return 404 instead of crashing.
     assert response.status_code == 404
+
+
+
+
+from datetime import datetime, timezone
+
+import pytest
+from api.db.models import MonitorCheck
+
+
+@pytest.mark.asyncio
+async def test_monitor_history_respects_limit(client):
+    create_response = await client.post(
+        "/monitors/",
+        json={
+            "name": "History Test",
+            "url": "https://example.com",
+        },
+    )
+    assert create_response.status_code == 200
+    monitor_id = create_response.json()["id"]
+
+    # Insert three checks directly into the isolated test database.
+    from api.db.database import get_db
+
+    async for db in app.dependency_overrides[get_db]():
+        timestamps = [
+            datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
+            datetime(2026, 1, 1, 10, 1, tzinfo=timezone.utc),
+            datetime(2026, 1, 1, 10, 2, tzinfo=timezone.utc),
+        ]
+
+        db.add_all([
+            MonitorCheck(
+                monitor_id=monitor_id,
+                status="UP",
+                status_code=200,
+                response_time_ms=100,
+                checked_at=timestamp,
+            )
+            for timestamp in timestamps
+        ])
+        await db.commit()
+        break
+
+    response = await client.get(
+        f"/monitors/{monitor_id}/history?limit=2"
+    )
+
+    assert response.status_code == 200
+    history = response.json()["history"]
+    assert len(history) == 2
+    assert history[0]["checked_at"] >= history[1]["checked_at"]
+
+
+@pytest.mark.asyncio
+async def test_monitor_uptime_with_mixed_results(client):
+    create_response = await client.post(
+        "/monitors/",
+        json={
+            "name": "Uptime Test",
+            "url": "https://example.com",
+        },
+    )
+    assert create_response.status_code == 200
+    monitor_id = create_response.json()["id"]
+
+    from api.db.database import get_db
+
+    async for db in app.dependency_overrides[get_db]():
+        db.add_all([
+            MonitorCheck(
+                monitor_id=monitor_id,
+                status="UP",
+                status_code=200,
+                response_time_ms=100,
+            ),
+            MonitorCheck(
+                monitor_id=monitor_id,
+                status="UP",
+                status_code=200,
+                response_time_ms=120,
+            ),
+            MonitorCheck(
+                monitor_id=monitor_id,
+                status="DOWN",
+                status_code=None,
+                response_time_ms=10000,
+                error="Request timed out",
+            ),
+            MonitorCheck(
+                monitor_id=monitor_id,
+                status="UP",
+                status_code=200,
+                response_time_ms=90,
+            ),
+        ])
+        await db.commit()
+        break
+
+    response = await client.get(
+        f"/monitors/{monitor_id}/uptime"
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_checks"] == 4
+    assert data["up_checks"] == 3
+    assert data["down_checks"] == 1
+    assert data["uptime_percentage"] == 75.0
+
+
+@pytest.mark.asyncio
+async def test_monitor_uptime_without_checks(client):
+    create_response = await client.post(
+        "/monitors/",
+        json={
+            "name": "New Monitor",
+            "url": "https://example.com",
+        },
+    )
+    assert create_response.status_code == 200
+    monitor_id = create_response.json()["id"]
+
+    response = await client.get(
+        f"/monitors/{monitor_id}/uptime"
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_checks"] == 0
+    assert data["up_checks"] == 0
+    assert data["down_checks"] == 0
+    assert data["uptime_percentage"] is None
+
+
+
+@pytest.mark.asyncio
+async def test_create_monitor_rejects_localhost(client):
+    response = await client.post(
+        "/monitors/",
+        json={
+            "name": "Unsafe Monitor",
+            "url": "http://localhost",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_monitor_rejects_private_ip(client):
+    create_response = await client.post(
+        "/monitors/",
+        json={
+            "name": "Example",
+            "url": "https://example.com",
+        },
+    )
+    assert create_response.status_code == 200
+
+    monitor_id = create_response.json()["id"]
+
+    response = await client.put(
+        f"/monitors/{monitor_id}",
+        json={
+            "name": "Example",
+            "url": "http://192.168.1.1",
+        },
+    )
+
+    assert response.status_code == 422
+
+    # The original monitor must remain unchanged.
+    list_response = await client.get("/monitors/")
+    monitor = list_response.json()["monitors"][0]
+    assert monitor["url"] == "https://example.com/"
