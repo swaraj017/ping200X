@@ -1,11 +1,31 @@
-from fastapi import FastAPI
-from api.routes.monitors import router as monitors_router
 
-app = FastAPI(title="Ping200X")
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from api.routes.monitors import router as monitors_router
+from api.scheduler import scheduler, start_scheduler
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    start_scheduler()
+    try:
+        yield
+    finally:
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
+
+
+app = FastAPI(
+    title="Ping200X",
+    lifespan=lifespan,
+)
 
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 app.include_router(monitors_router)
