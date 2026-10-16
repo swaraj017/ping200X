@@ -95,3 +95,38 @@ async def test_server_error_response():
     assert result["status"] == "UP"
     assert result["status_code"] == 500
     assert result["error"] is None
+
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_redirect_to_localhost_is_rejected():
+    respx.get("https://example.com/").mock(
+        return_value=httpx.Response(
+            302,
+            headers={"Location": "http://127.0.0.1/admin"},
+        )
+    )
+
+    result = await check_url("https://example.com/")
+
+    assert result["status"] == "DOWN"
+    assert result["status_code"] is None
+    assert "non-public IP" in result["error"] or "Localhost" in result["error"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_redirect_to_private_ip_is_rejected():
+    respx.get("https://example.com/").mock(
+        return_value=httpx.Response(
+            302,
+            headers={"Location": "http://192.168.1.1/"},
+        )
+    )
+
+    result = await check_url("https://example.com/")
+
+    assert result["status"] == "DOWN"
+    assert result["status_code"] is None
+    assert "non-public IP" in result["error"] or "Localhost" in result["error"]
