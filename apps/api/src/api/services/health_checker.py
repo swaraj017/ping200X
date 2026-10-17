@@ -4,6 +4,7 @@ from urllib.parse import urljoin
 
 import httpx
 
+from api.services.secure_transport import SecureAsyncHTTPTransport
 from api.services.url_security import UnsafeURLError, validate_url
 
 
@@ -22,6 +23,9 @@ async def check_url(url: str):
             timeout=timeout,
             follow_redirects=False,
             trust_env=False,
+            transport=SecureAsyncHTTPTransport(
+                trust_env=False,
+            ),
         ) as client:
             while True:
                 # Validate every destination, including redirects.
